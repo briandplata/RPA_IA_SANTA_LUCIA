@@ -1,0 +1,7 @@
+openai
+python-dotenv
+pyyaml
+openpyxl
+playwright
+pillow
+pdf2image

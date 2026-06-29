@@ -1,0 +1,19 @@
+# Credenciales
+.env
+
+# Carpetas de datos (no subir pacientes reales)
+pacientes/
+output/
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Sistema
+.DS_Store
+Thumbs.db

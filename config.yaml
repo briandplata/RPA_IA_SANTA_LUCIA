@@ -1,0 +1,6 @@
+ruta_pacientes: pacientes
+url_plataforma: https://transaccional.saludtotal.com.co/OficinaVirtual/#/
+tipo_doc_ips: NIT
+nit_ips: '900434332'
+tipo_doc_usuario: CEDULA DE CIUDADANIA
+id_usuario: '9004343321'
