@@ -120,7 +120,27 @@ Las credenciales (contraseña web y API key de OpenAI) se manejan exclusivamente
 
 ## Despliegue
 
-*(Por completar)*
+Este proyecto es una herramienta RPA de escritorio. No requiere servidor ni infraestructura cloud — se ejecuta localmente en la máquina del usuario con acceso a la carpeta de pacientes.
+
+**Descarga ejecutable (Release):**
+El proyecto se distribuye como ejecutable `.exe` compilado con PyInstaller, disponible en la sección de releases del repositorio:
+
+👉 https://github.com/briandplata/RPA_IA_SANTA_LUCIA/releases
+
+**Requisitos para ejecutar:**
+1. Tener instalado [uv](https://docs.astral.sh/uv/)
+2. Clonar el repositorio y configurar dependencias:
+```bash
+uv venv
+uv pip install -r requirements.txt
+uv run playwright install chromium
+```
+3. Crear el archivo `.env` con `OPENAI_API_KEY` y `PASSWORD_USUARIO`
+4. Colocar PDFs en la carpeta `pacientes/`
+5. Ejecutar:
+```bash
+uv run python main.py
+```
 
 ## Slides
 
