@@ -16,7 +16,8 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 CABECERAS_CONSOLIDADO = [
     "Fecha_Hora", "Archivo", "ID_Paciente",
-    "Nombre_Paciente", "Autorizacion", "Cod_Fact", "ESTADO_ROBOT"
+    "Nombre_Paciente", "Autorizacion", "Cod_Fact", "ESTADO_ROBOT",
+    "Paquete", "Cantidad", "Sede", "Nombre_Convenio", "Fecha_Vencimiento"
 ]
 
 CABECERAS_ERRORES = [
@@ -127,7 +128,8 @@ def ejecutar(config: dict, logger, datos_entrada: Any = None) -> Tuple[bool, Any
                     item["nombre_paciente"],# D: Nombre_Paciente
                     item["autorizacion"],   # E: Autorizacion
                     item["cod_fact"],       # F: Cod_Fact
-                    ""                      # G: ESTADO_ROBOT (vacío = pendiente)
+                    "",                     # G: ESTADO_ROBOT (vacío = pendiente)
+                    "", "", "", "", ""      # H-L: datos web (se llenan en p05)
                 ])
                 autorizaciones_existentes.add(aut)
                 nuevos_consolidado += 1

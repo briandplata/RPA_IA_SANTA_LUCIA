@@ -44,11 +44,16 @@ ESTADO_NOMBRE_NO_OK  = "Nombre del paciente NO coincide"
 ESTADO_ERROR         = "ERROR - MAX REINTENTOS"
 
 # Columnas en consolidado.xlsx (1-based para openpyxl)
-COL_ID_PACIENTE   = 3   # C
-COL_NOMBRE        = 4   # D
-COL_AUTORIZACION  = 5   # E
-COL_COD_FACT      = 6   # F
-COL_ESTADO_ROBOT  = 7   # G
+COL_ID_PACIENTE      = 3   # C
+COL_NOMBRE           = 4   # D
+COL_AUTORIZACION     = 5   # E
+COL_COD_FACT         = 6   # F
+COL_ESTADO_ROBOT     = 7   # G
+COL_PAQUETE          = 8   # H
+COL_CANTIDAD         = 9   # I
+COL_SEDE             = 10  # J
+COL_NOMBRE_CONVENIO  = 11  # K
+COL_FECHA_VENCIMIENTO= 12  # L
 
 
 # ─── Helpers de navegación ────────────────────────────────────────────────────
@@ -120,6 +125,51 @@ def _seleccionar_sede(page, config: dict) -> None:
     page.get_by_role("button", name=SELECTORES["btn_aceptar"]).click()
 
 
+def _datos_vacio() -> dict:
+    """Retorna dict vacío de datos adicionales."""
+    return {"paquete": "", "cantidad": "", "sede": "", "nombre_convenio": "", "fecha_vencimiento": ""}
+
+
+def _extraer_datos_fila_web(page, cod_fact: str) -> dict:
+    """Extrae clasificación, cantidad, sede, convenio y fecha de la fila que coincide con cod_fact."""
+    datos = page.evaluate(
+        """(cod) => {
+            const ths = Array.from(document.querySelectorAll('kendo-grid th'));
+            const textos = ths.map(th => th.innerText.trim());
+
+            const idx = {
+                codigo:   textos.findIndex(t => t.includes('CÓDIGO SERVICIO')),
+                clasif:   textos.findIndex(t => t.includes('CLASIFICACIÓN')),
+                cantidad: textos.findIndex(t => t.includes('CANTIDAD SE')),
+                sede:     textos.findIndex(t => t.includes('SEDE')),
+                convenio: textos.findIndex(t => t.includes('NOMBRE CONVENIO')),
+                fecha:    textos.findIndex(t => t.includes('FECHA VENCIMIENTO')),
+            };
+
+            const trs = Array.from(document.querySelectorAll(
+                'kendo-grid-list table tbody tr:not(.k-grid-norecords)'
+            ));
+
+            for (const tr of trs) {
+                const tds = tr.querySelectorAll('td');
+                const codigo = tds[idx.codigo] ? tds[idx.codigo].textContent.trim() : '';
+                if (codigo.startsWith(cod)) {
+                    return {
+                        paquete:           tds[idx.clasif]   ? tds[idx.clasif].textContent.trim()   : '',
+                        cantidad:          tds[idx.cantidad] ? tds[idx.cantidad].textContent.trim() : '',
+                        sede:              tds[idx.sede]     ? tds[idx.sede].textContent.trim()     : '',
+                        nombre_convenio:   tds[idx.convenio] ? tds[idx.convenio].textContent.trim() : '',
+                        fecha_vencimiento: tds[idx.fecha]    ? tds[idx.fecha].textContent.trim()    : '',
+                    };
+                }
+            }
+            return null;
+        }""",
+        cod_fact
+    )
+    return datos if datos else _datos_vacio()
+
+
 def _obtener_codigos_web(page) -> list[str]:
     """Extrae todos los códigos de servicio de la tabla kendo-grid (con paginación)."""
     codigos = []
@@ -165,16 +215,15 @@ def _obtener_codigos_web(page) -> list[str]:
     return list(set(codigos))
 
 
-def _procesar_fila(page, fila: dict, config: dict, logger, idx: int, total: int) -> str:
+def _procesar_fila(page, fila: dict, config: dict, logger, idx: int, total: int) -> dict:
     """
-    Consulta un paciente en la web y retorna el estado a registrar.
-    Retorna el texto del estado (ESTADO_*).
+    Consulta un paciente en la web.
+    Retorna dict con 'estado' y datos adicionales (paquete, cantidad, sede, etc.).
     """
     id_pac  = str(fila["id_paciente"]).strip()
     nombre  = str(fila["nombre_paciente"]).strip().upper()
     aut     = str(fila["autorizacion"]).strip()
     cod     = str(fila["cod_fact"]).strip()
-    tiempos = config.get("tiempos", {})
 
     logger.info("[Fila %d/%d] Consultando paciente ID=%s | AUT=%s", idx, total, id_pac, aut)
 
@@ -190,11 +239,11 @@ def _procesar_fila(page, fila: dict, config: dict, logger, idx: int, total: int)
         dialogo_no_afiliado.wait_for(state="visible", timeout=3000)
         dialogo_no_afiliado.get_by_role("button", name="Aceptar").click()
         logger.warning("[Fila %d/%d] Afiliado no encontrado en sistema: ID=%s", idx, total, id_pac)
-        return ESTADO_PAC_NO_EXISTE
+        return {"estado": ESTADO_PAC_NO_EXISTE, **_datos_vacio()}
     except PlaywrightTimeout:
-        pass  # No apareció el popup → el afiliado existe, continuar
+        pass  # No apareció → el afiliado existe, continuar
 
-    # Manejar alerta PAC PLAN ALFA si aparece
+    # Manejar alerta PAC PLAN ALFA
     try:
         dialogo = page.locator("app-info-afiliado app-ventana kendo-dialog").filter(
             has_text=re.compile(r"AFILIADO PAC PLAN ALFA", re.IGNORECASE)
@@ -213,12 +262,12 @@ def _procesar_fila(page, fila: dict, config: dict, logger, idx: int, total: int)
 
     if not nombre_web:
         logger.warning("[Fila %d/%d] Paciente no encontrado: ID=%s", idx, total, id_pac)
-        return ESTADO_PAC_NO_EXISTE
+        return {"estado": ESTADO_PAC_NO_EXISTE, **_datos_vacio()}
 
     if nombre_web[:5] != nombre[:5]:
         logger.warning("[Fila %d/%d] Nombre no coincide. Web='%s' | Excel='%s'",
                        idx, total, nombre_web, nombre)
-        return ESTADO_NOMBRE_NO_OK
+        return {"estado": ESTADO_NOMBRE_NO_OK, **_datos_vacio()}
 
     # Consultar direccionamientos
     page.get_by_text(SELECTORES["consultar_dir"]).click()
@@ -261,7 +310,7 @@ def _procesar_fila(page, fila: dict, config: dict, logger, idx: int, total: int)
             page.wait_for_timeout(1000)
 
     except PlaywrightTimeout:
-        pass  # Resultados encontrados sin necesidad del truco de fechas
+        pass  # Resultados encontrados sin truco de fechas
 
     # Filtrar por autorización
     filtro = page.get_by_role("textbox", name=SELECTORES["filtro_aut"], exact=True)
@@ -277,13 +326,18 @@ def _procesar_fila(page, fila: dict, config: dict, logger, idx: int, total: int)
     codigos_web = _obtener_codigos_web(page)
     logger.info("[Fila %d/%d] Códigos en web para AUT=%s: %s", idx, total, aut, codigos_web)
 
-    # Validar si cod_fact está en los resultados
+    # Validar si cod_fact está en los resultados y extraer datos adicionales
     if any(str(cw).startswith(cod) for cw in codigos_web):
-        logger.info("[Fila %d/%d] ENCONTRADO: cod_fact=%s en AUT=%s", idx, total, cod, aut)
-        return ESTADO_ENCONTRADO
+        datos_adicionales = _extraer_datos_fila_web(page, cod)
+        logger.info("[Fila %d/%d] ENCONTRADO: cod=%s | Paquete=%s | Convenio=%s | Vence=%s",
+                    idx, total, cod,
+                    datos_adicionales.get("paquete", ""),
+                    datos_adicionales.get("nombre_convenio", ""),
+                    datos_adicionales.get("fecha_vencimiento", ""))
+        return {"estado": ESTADO_ENCONTRADO, **datos_adicionales}
     else:
         logger.warning("[Fila %d/%d] NO ENCONTRADO: cod_fact=%s en AUT=%s", idx, total, cod, aut)
-        return ESTADO_NO_ENCONTRADO
+        return {"estado": ESTADO_NO_ENCONTRADO, **_datos_vacio()}
 
 
 def ejecutar(config: dict, logger, datos_entrada: Any = None) -> Tuple[bool, Any]:
@@ -351,7 +405,7 @@ def ejecutar(config: dict, logger, datos_entrada: Any = None) -> Tuple[bool, Any
         paciente_actual = None
 
         for contador, fila in enumerate(filas_pendientes, start=1):
-            estado_resultado = ESTADO_ERROR
+            resultado = {"estado": ESTADO_ERROR, **_datos_vacio()}
             id_pac = fila["id_paciente"]
 
             for intento in range(1, reintentos_max + 1):
@@ -365,7 +419,7 @@ def ejecutar(config: dict, logger, datos_entrada: Any = None) -> Tuple[bool, Any
                         el.click()
                         page.wait_for_load_state("networkidle")
 
-                    estado_resultado = _procesar_fila(page, fila, config, logger, contador, total)
+                    resultado = _procesar_fila(page, fila, config, logger, contador, total)
                     paciente_actual = id_pac
                     break
 
@@ -385,11 +439,16 @@ def ejecutar(config: dict, logger, datos_entrada: Any = None) -> Tuple[bool, Any
                         except Exception as restart_err:
                             logger.error("Error al reiniciar sesión: %s", str(restart_err))
 
-            # Escribir estado en Excel en tiempo real
-            ws.cell(row=fila["row_idx"], column=COL_ESTADO_ROBOT, value=estado_resultado)
+            # Escribir estado + datos adicionales en Excel en tiempo real
+            ws.cell(row=fila["row_idx"], column=COL_ESTADO_ROBOT,      value=resultado["estado"])
+            ws.cell(row=fila["row_idx"], column=COL_PAQUETE,           value=resultado.get("paquete", ""))
+            ws.cell(row=fila["row_idx"], column=COL_CANTIDAD,          value=resultado.get("cantidad", ""))
+            ws.cell(row=fila["row_idx"], column=COL_SEDE,              value=resultado.get("sede", ""))
+            ws.cell(row=fila["row_idx"], column=COL_NOMBRE_CONVENIO,   value=resultado.get("nombre_convenio", ""))
+            ws.cell(row=fila["row_idx"], column=COL_FECHA_VENCIMIENTO, value=resultado.get("fecha_vencimiento", ""))
             wb.save(ruta_consolidado)
             verificados += 1
-            logger.info("[Fila %d/%d] ESTADO_ROBOT: %s", contador, total, estado_resultado)
+            logger.info("[Fila %d/%d] ESTADO_ROBOT: %s", contador, total, resultado["estado"])
 
             if contador % guardar_cada == 0:
                 logger.info("Guardado parcial en fila %d/%d", contador, total)
