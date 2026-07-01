@@ -1,6 +1,45 @@
-ruta_pacientes: pacientes
-url_plataforma: https://transaccional.saludtotal.com.co/OficinaVirtual/#/
-tipo_doc_ips: NIT
-nit_ips: '900434332'
-tipo_doc_usuario: CEDULA DE CIUDADANIA
-id_usuario: '9004343321'
+# ─── Identificación ───
+robot_name: "RPA IA Santa Lucía"
+version: "1.0.0"
+
+# ─── Rutas ───
+log_path: "logs/main.log"
+rutas:
+  pacientes: "pacientes"
+  procesados: "pacientes/procesados"
+  no_procesados: "pacientes/no_procesados"
+
+# ─── Archivos de salida ───
+archivos:
+  consolidado: "pacientes/procesados/consolidado.xlsx"
+  errores: "pacientes/no_procesados/errores.xlsx"
+
+# ─── Plataforma web SaludTotal ───
+url_plataforma: "https://transaccional.saludtotal.com.co/OficinaVirtual/#/"
+tipo_doc_ips: "NIT"
+nit_ips: "900434332"
+tipo_doc_usuario: "CEDULA DE CIUDADANIA"
+id_usuario: "9004343321"
+
+# ─── OCR con IA ───
+ocr:
+  model: "gpt-4o-mini"
+  max_reintentos: 3
+
+# ─── Navegación (Playwright) ───
+navegacion:
+  headless: false
+  slow_mo: 0
+  browser: "chromium"
+  sucursal: "BOLIVAR"
+  sede: "LAB CLINICO SANTA LUCIA IPS SAS"
+
+# ─── Tiempos en segundos ───
+tiempos:
+  timeout_general: 120
+  espera_carga_pagina: 10
+
+# ─── Parámetros del proceso ───
+parametros:
+  reintentos_max: 3
+  guardar_cada_n_registros: 5

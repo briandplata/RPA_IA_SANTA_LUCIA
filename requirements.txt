@@ -1,7 +1,8 @@
-openai
-python-dotenv
-pyyaml
-openpyxl
-playwright
-pillow
-pdf2image
+pyyaml>=6.0
+python-dotenv>=1.0
+openai>=1.30
+pymupdf>=1.24
+openpyxl>=3.1
+playwright>=1.40
+pandas>=2.0
+python-dateutil>=2.8
