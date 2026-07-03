@@ -15,31 +15,24 @@ El sistema está diseñado para ejecutarse de forma continua: si hay PDFs nuevos
 - **openpyxl** — Generación y edición de Excel en tiempo real
 - **PyYAML + python-dotenv** — Configuración centralizada y variables de entorno seguras
 
-## Instalación y ejecución
+## Instalación y uso
 
-```bash
-# 1. Clonar el repositorio
-git clone https://github.com/briandplata/RPA_IA_SANTA_LUCIA.git
-cd RPA_IA_SANTA_LUCIA
+El proyecto se distribuye con dos archivos `.bat` para simplificar el uso en Windows:
 
-# 2. Crear entorno virtual (con uv recomendado)
-uv venv
-uv pip install -r requirements.txt
-uv run playwright install chromium
+| Archivo | Cuándo usarlo |
+|---|---|
+| `INSTALAR_LUCIA.bat` | **Una sola vez** — instala `uv`, dependencias, Chromium y crea la estructura de carpetas |
+| `EJECUTAR_LUCIA.bat` | **Cada vez** que se quiera correr el robot |
 
-# 3. Configurar credenciales
-cp .env.example .env
-# Editar .env con:
-#   OPENAI_API_KEY=sk-...
-#   PASSWORD_USUARIO=tu_contraseña
+### Pasos
 
-# 4. Colocar PDFs de pacientes en la carpeta pacientes/
+1. Descarga el código fuente desde [Releases](https://github.com/briandplata/RPA_IA_SANTA_LUCIA/releases) y extrae la carpeta.
+2. Crea el archivo `.env` con tus credenciales (ver sección Seguridad).
+3. Ejecuta `INSTALAR_LUCIA.bat` con doble clic (solo la primera vez).
+4. Coloca los PDFs de pacientes en `pacientes/pendientes/`.
+5. Ejecuta `EJECUTAR_LUCIA.bat` con doble clic.
 
-# 5. Ejecutar
-uv run python main.py
-```
-
-> **Nota:** La carpeta `pacientes/` y sus subcarpetas no se incluyen en el repositorio por contener datos médicos reales de pacientes.
+> **Nota:** La carpeta `pacientes/` no se incluye en el repositorio por contener datos médicos reales.
 
 ## Estructura del proyecto
 
@@ -120,27 +113,17 @@ Las credenciales (contraseña web y API key de OpenAI) se manejan exclusivamente
 
 ## Despliegue
 
-Este proyecto es una herramienta RPA de escritorio. No requiere servidor ni infraestructura cloud — se ejecuta localmente en la máquina del usuario con acceso a la carpeta de pacientes.
+Herramienta RPA de escritorio. No requiere servidor ni infraestructura cloud — corre localmente en la máquina del usuario con acceso a la carpeta de pacientes.
 
-**Descarga ejecutable (Release):**
-El proyecto se distribuye como ejecutable `.exe` compilado con PyInstaller, disponible en la sección de releases del repositorio:
-
+**Descarga:**
 👉 https://github.com/briandplata/RPA_IA_SANTA_LUCIA/releases
 
-**Requisitos para ejecutar:**
-1. Tener instalado [uv](https://docs.astral.sh/uv/)
-2. Clonar el repositorio y configurar dependencias:
-```bash
-uv venv
-uv pip install -r requirements.txt
-uv run playwright install chromium
-```
-3. Crear el archivo `.env` con `OPENAI_API_KEY` y `PASSWORD_USUARIO`
-4. Colocar PDFs en la carpeta `pacientes/`
-5. Ejecutar:
-```bash
-uv run python main.py
-```
+**Requisitos mínimos:**
+- Windows 10/11
+- Conexión a internet (API OpenAI + portal SaludTotal)
+- Clave API de OpenAI
+
+`INSTALAR_LUCIA.bat` se encarga automáticamente de instalar `uv`, las dependencias Python y el navegador Chromium.
 
 ## Slides
 

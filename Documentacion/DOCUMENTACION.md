@@ -362,58 +362,54 @@ El sistema maneja datos médicos sensibles de pacientes. Las medidas de segurida
 
 ### 8.1 Requisitos previos
 
-- Python 3.11 o superior
-- [uv](https://docs.astral.sh/uv/) instalado (`pip install uv`)
-- Acceso a internet para descargar Chromium (Playwright) y llamar a la API de OpenAI
+- Windows 10/11
+- Conexión a internet (API de OpenAI + portal SaludTotal EPS)
+- Clave API de OpenAI activa
 
-### 8.2 Instalación
+> No es necesario instalar Python ni ninguna dependencia manualmente. El script `INSTALAR_LUCIA.bat` se encarga de todo.
 
-```bash
-# 1. Clonar el repositorio
-git clone https://github.com/briandplata/RPA_IA_SANTA_LUCIA.git
-cd RPA_IA_SANTA_LUCIA
+### 8.2 Scripts de distribución
 
-# 2. Crear entorno virtual con uv
-uv venv
-uv pip install -r requirements.txt
+El proyecto se entrega con dos archivos `.bat` en la raíz del repositorio:
 
-# 3. Instalar Chromium para Playwright
-uv run playwright install chromium
+**`INSTALAR_LUCIA.bat` — Configuración inicial (ejecutar una sola vez)**
 
-# 4. Configurar credenciales
-cp .env.example .env
-# Editar .env con OPENAI_API_KEY y PASSWORD_USUARIO
+Realiza automáticamente:
+1. Verifica si `uv` está instalado; si no, lo instala vía `winget`.
+2. Ejecuta `uv sync` para instalar todas las dependencias Python.
+3. Ejecuta `uv run playwright install chromium` para descargar el navegador.
+4. Crea la estructura de carpetas: `pacientes/pendientes/`, `pacientes/procesados/`, `pacientes/no_procesados/`, `logs/`, `output/`.
+5. Genera un archivo `.env` de plantilla si no existe.
 
-# 5. Crear estructura de carpetas
-mkdir -p pacientes/procesados pacientes/no_procesados logs
-```
+**`EJECUTAR_LUCIA.bat` — Lanzador diario del robot**
 
-### 8.3 Ejecución
+Realiza automáticamente:
+1. Verifica que `uv` esté disponible.
+2. Verifica que el archivo `.env` con credenciales exista.
+3. Lanza `uv run python main.py`.
+4. Muestra mensaje de éxito o error al terminar.
 
-```bash
-# Colocar PDFs en pacientes/ y ejecutar
-uv run python main.py
-```
+### 8.3 Pasos de instalación para el usuario final
+
+1. Descargar el código fuente desde [Releases](https://github.com/briandplata/RPA_IA_SANTA_LUCIA/releases) y extraer la carpeta.
+2. Editar el archivo `.env` con las credenciales reales:
+   ```
+   OPENAI_API_KEY=sk-...
+   WEB_USER=usuario_saludtotal
+   WEB_PASSWORD=contraseña_saludtotal
+   ```
+3. Hacer doble clic en `INSTALAR_LUCIA.bat` (solo la primera vez).
+4. Colocar los PDFs de pacientes en `pacientes/pendientes/`.
+5. Hacer doble clic en `EJECUTAR_LUCIA.bat` para iniciar el robot.
 
 ### 8.4 Modo producción
 
-Para ejecutar en producción (sin abrir ventana del navegador), cambiar en `config.yaml`:
+Para ejecutar sin abrir ventana del navegador, cambiar en `config.yaml`:
 
 ```yaml
 navegacion:
   headless: true
 ```
-
-### 8.5 Despliegue como ejecutable
-
-El proyecto se puede distribuir como ejecutable `.exe` con PyInstaller:
-
-```bash
-uv pip install pyinstaller
-uv run pyinstaller --onefile --name RPA_IA_Santa_Lucia main.py
-```
-
-El ejecutable resultante se publica en la sección de [Releases del repositorio](https://github.com/briandplata/RPA_IA_SANTA_LUCIA/releases). El usuario final solo necesita tener el ejecutable, el `config.yaml` y el `.env` correctamente configurados.
 
 ---
 
