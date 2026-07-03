@@ -1,13 +1,44 @@
 """
-Subproceso: p01_listar_pdfs
-Descripción: Lista todos los archivos PDF en la carpeta de pacientes para procesamiento.
+Módulo: processes.p01_listar_pdfs
+Descripción: Primer subproceso del pipeline. Escanea la carpeta de pacientes
+             y retorna la lista de archivos PDF pendientes de procesamiento.
+             Si no hay PDFs el flujo continúa directamente a la verificación web.
+Autor: Brayand Javier Gomez Plata
 """
 
 import os
 from typing import Any, Tuple
 
 
-def ejecutar(config: dict, logger, datos_entrada: Any = None) -> Tuple[bool, Any]:
+def ejecutar(config: dict, logger, datos_entrada: Any = None) -> Tuple[bool, list]:
+    """Lista los archivos PDF disponibles en la carpeta de pacientes.
+
+    Escanea en el primer nivel (no recursivo) la carpeta definida en
+    ``config["rutas"]["pacientes"]``. Retorna siempre ``True`` para no
+    interrumpir el pipeline cuando no hay PDFs nuevos — en ese caso el
+    robot procede directamente a la verificación web (p05).
+
+    Args:
+        config: Diccionario de configuración cargado desde ``config.yaml``.
+                Debe contener ``config["rutas"]["pacientes"]``.
+        logger: Instancia del logger centralizado (``utils.logger.get_logger``).
+        datos_entrada: No utilizado en este subproceso. Existe por convención
+                       de la arquitectura RPA.
+
+    Returns:
+        Tupla ``(True, lista_de_rutas)`` donde ``lista_de_rutas`` es una lista
+        de strings con las rutas absolutas de los PDFs encontrados, o lista
+        vacía si no hay archivos. Retorna ``(False, None)`` solo ante errores
+        críticos (carpeta inaccesible, permisos, etc.).
+
+    Raises:
+        No lanza excepciones directamente; las captura y retorna ``(False, None)``.
+
+    Example:
+        >>> exito, pdfs = ejecutar(config, logger)
+        >>> if pdfs:
+        ...     print(f"{len(pdfs)} PDFs para procesar")
+    """
     nombre_proceso = "p01_listar_pdfs"
     logger.info(">> INICIO subproceso: %s", nombre_proceso)
 

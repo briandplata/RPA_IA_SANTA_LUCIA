@@ -30,11 +30,43 @@ def cerrar_excel() -> None:
 
 
 def cargar_config(ruta: str = "config.yaml") -> dict:
+    """Carga y retorna el archivo de configuración YAML del robot.
+
+    Args:
+        ruta: Ruta al archivo ``config.yaml``. Por defecto busca en el
+              directorio de trabajo actual.
+
+    Returns:
+        Diccionario con toda la configuración del robot.
+
+    Raises:
+        FileNotFoundError: Si el archivo no existe en la ruta indicada.
+        yaml.YAMLError: Si el archivo no es YAML válido.
+    """
     with open(ruta, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 def main():
+    """Orquesta la ejecución secuencial de los cinco subprocesos del pipeline.
+
+    Flujo:
+    1. Cierra procesos ``EXCEL.EXE`` abiertos para evitar bloqueos de archivo.
+    2. Carga variables de entorno (``.env``) y configuración (``config.yaml``).
+    3. **p01** — Lista PDFs en ``pacientes/``.
+    4. **p02-p04** — Solo si hay PDFs nuevos: OCR con IA, escritura en Excel
+       y movimiento de archivos a sus carpetas de destino.
+    5. **p05** — Siempre: verifica autorizaciones pendientes en SaludTotal web.
+
+    Si cualquier subproceso retorna ``(False, ...)`` el robot se detiene
+    con ``sys.exit(1)`` y registra el punto de fallo en el log.
+
+    Note:
+        - Las credenciales se cargan exclusivamente desde ``.env``;
+          nunca se pasan por argumentos ni se hardcodean en el código.
+        - p05 se ejecuta aunque p01 retorne lista vacía, permitiendo
+          reprocesar filas si el cliente borra manualmente el ESTADO_ROBOT.
+    """
     cerrar_excel()
     load_dotenv()
     config = cargar_config()

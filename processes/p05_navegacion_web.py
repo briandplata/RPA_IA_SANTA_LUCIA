@@ -1,9 +1,14 @@
 """
-Subproceso: p05_navegacion_web
-Descripción: Lee consolidado.xlsx fila por fila, verifica en la plataforma web de
-             Salud Total EPS cada autorización con ESTADO_ROBOT vacío y registra
-             el resultado en la columna G del Excel en tiempo real.
-             Si el cliente borra manualmente el estado, el robot lo reprocesa.
+Módulo: processes.p05_navegacion_web
+Descripción: Quinto y último subproceso del pipeline. Lee ``consolidado.xlsx``
+             fila por fila, verifica en la plataforma transaccional de Salud Total
+             EPS cada autorización cuyo ESTADO_ROBOT (columna G) esté vacío, y
+             escribe el resultado —junto con 5 campos adicionales de la web— de
+             vuelta al Excel en tiempo real (columnas G-L).
+             Este subproceso siempre se ejecuta, aunque no haya PDFs nuevos,
+             lo que permite reprocesar filas si el cliente borra manualmente el estado.
+             Usa Playwright (Chromium) sin necesidad de ChromeDriver.
+Autor: Brayand Javier Gomez Plata
 """
 
 import os
@@ -59,7 +64,23 @@ COL_FECHA_VENCIMIENTO= 12  # L
 # ─── Helpers de navegación ────────────────────────────────────────────────────
 
 def _seleccionar_combobox(page, nombre: str, opcion: str, contenedor=None) -> None:
-    """Selecciona una opción en un combobox de la plataforma SaludTotal."""
+    """Selecciona una opción en un combobox Kendo UI de la plataforma SaludTotal.
+
+    Hace clic en el campo, escribe el texto de la opción con un delay de 30 ms
+    para simular tipeo humano, espera la opción en el dropdown y la selecciona.
+    Si el dropdown no aparece en 2500 ms usa teclas de flecha como fallback.
+    Verifica que el valor final coincida con la opción esperada.
+
+    Args:
+        page: Instancia de ``playwright.sync_api.Page``.
+        nombre: Atributo ``name`` (o aria-label) del combobox.
+        opcion: Texto exacto de la opción a seleccionar.
+        contenedor: Locator opcional del elemento padre para acotar la búsqueda
+                    (útil cuando hay múltiples comboboxes con el mismo nombre).
+
+    Raises:
+        RuntimeError: Si el valor final del combobox no contiene la opción esperada.
+    """
     base = contenedor if contenedor else page
     cb = base.get_by_role("combobox", name=nombre)
     cb.wait_for(state="visible")
@@ -83,7 +104,19 @@ def _seleccionar_combobox(page, nombre: str, opcion: str, contenedor=None) -> No
 
 
 def _login(page, config: dict) -> None:
-    """Realiza el login en la plataforma SaludTota"""
+    """Realiza el login en la plataforma transaccional de SaludTotal EPS.
+
+    Navega a la URL configurada, selecciona la pestaña IPS, rellena los
+    campos de tipo de documento e identificación de la IPS y del usuario,
+    ingresa la contraseña desde la variable de entorno ``PASSWORD_USUARIO``
+    (nunca en código) y hace clic en INGRESAR.
+
+    Args:
+        page: Instancia de ``playwright.sync_api.Page`` con sesión activa.
+        config: Configuración completa del robot. Se usan las claves
+                ``url_plataforma``, ``tipo_doc_ips``, ``nit_ips``,
+                ``tipo_doc_usuario`` e ``id_usuario``.
+    """
     password = os.getenv("PASSWORD_USUARIO", "")
     tiempos = config.get("tiempos", {})
 
@@ -104,7 +137,15 @@ def _login(page, config: dict) -> None:
 
 
 def _ir_a_registro_dir(page) -> None:
-    """Navega al módulo de Registro de Direccionamiento."""
+    """Navega al módulo de Registro de Direccionamiento dentro de la sesión activa.
+
+    Hace clic en el botón DIRECCIONAMIENTOS del menú principal y luego en
+    la opción REGISTRAR DIRECCIONAMIENTO. Espera ``networkidle`` para asegurar
+    que la página esté completamente cargada antes de continuar.
+
+    Args:
+        page: Instancia de ``playwright.sync_api.Page`` con sesión iniciada.
+    """
     page.get_by_role("button", name=SELECTORES["btn_direccionamientos"], exact=True).click()
     el = page.get_by_text(SELECTORES["registrar_direccionamiento"])
     el.wait_for(state="visible")
@@ -113,7 +154,17 @@ def _ir_a_registro_dir(page) -> None:
 
 
 def _seleccionar_sede(page, config: dict) -> None:
-    """Selecciona sucursal y sede en el modal inicial."""
+    """Selecciona la sucursal y sede IPS en el modal de configuración inicial.
+
+    El modal aparece automáticamente al entrar al módulo de Direccionamiento.
+    Usa ``_seleccionar_combobox`` con el contenedor del modal para evitar
+    ambigüedades con otros comboboxes de la página.
+
+    Args:
+        page: Instancia de ``playwright.sync_api.Page``.
+        config: Configuración del robot. Se usan ``config["navegacion"]["sucursal"]``
+                y ``config["navegacion"]["sede"]``.
+    """
     sucursal = config["navegacion"]["sucursal"]
     sede = config["navegacion"]["sede"]
 
@@ -126,12 +177,36 @@ def _seleccionar_sede(page, config: dict) -> None:
 
 
 def _datos_vacio() -> dict:
-    """Retorna dict vacío de datos adicionales."""
+    """Retorna un diccionario con los campos adicionales web en blanco.
+
+    Se usa cuando el paciente no existe, el nombre no coincide, o el código
+    de servicio no se encontró. Garantiza que las columnas H-L del Excel
+    queden vacías en lugar de causar un ``KeyError``.
+
+    Returns:
+        Dict con claves ``paquete``, ``cantidad``, ``sede``,
+        ``nombre_convenio`` y ``fecha_vencimiento``, todos con valor ``""``.
+    """
     return {"paquete": "", "cantidad": "", "sede": "", "nombre_convenio": "", "fecha_vencimiento": ""}
 
 
 def _extraer_datos_fila_web(page, cod_fact: str) -> dict:
-    """Extrae clasificación, cantidad, sede, convenio y fecha de la fila que coincide con cod_fact."""
+    """Extrae los 5 campos adicionales de la fila que coincide con cod_fact en la tabla.
+
+    Ejecuta JavaScript en el contexto de la página para navegar el DOM del
+    kendo-grid sin depender de selectores CSS frágiles. Localiza el índice de
+    cada columna de cabecera dinámicamente y luego recorre las filas hasta
+    encontrar la que inicia con ``cod_fact``.
+
+    Args:
+        page: Instancia de ``playwright.sync_api.Page`` con la tabla visible.
+        cod_fact: Código de facturación a buscar (búsqueda por ``startsWith``).
+
+    Returns:
+        Dict con claves ``paquete``, ``cantidad``, ``sede``,
+        ``nombre_convenio`` y ``fecha_vencimiento`` con los valores
+        encontrados, o ``_datos_vacio()`` si la fila no se encontró.
+    """
     datos = page.evaluate(
         """(cod) => {
             const ths = Array.from(document.querySelectorAll('kendo-grid th'));
@@ -171,7 +246,20 @@ def _extraer_datos_fila_web(page, cod_fact: str) -> dict:
 
 
 def _obtener_codigos_web(page) -> list[str]:
-    """Extrae todos los códigos de servicio de la tabla kendo-grid (con paginación)."""
+    """Extrae todos los códigos de servicio del kendo-grid navegando por todas las páginas.
+
+    Itera hasta 20 páginas haciendo clic en el botón "Siguiente" del paginador
+    Kendo. En cada página extrae los valores de la columna ``CÓDIGO SERVICIO``
+    via JavaScript. Retorna la unión de todos como set (sin duplicados).
+
+    Args:
+        page: Instancia de ``playwright.sync_api.Page`` con el grid visible
+              y filtrado por número de autorización.
+
+    Returns:
+        Lista de strings con todos los códigos de servicio encontrados
+        en la autorización consultada.
+    """
     codigos = []
     limite_paginas = 0
 
@@ -216,9 +304,35 @@ def _obtener_codigos_web(page) -> list[str]:
 
 
 def _procesar_fila(page, fila: dict, config: dict, logger, idx: int, total: int) -> dict:
-    """
-    Consulta un paciente en la web.
-    Retorna dict con 'estado' y datos adicionales (paquete, cantidad, sede, etc.).
+    """Consulta un paciente en la plataforma web y retorna el estado de verificación.
+
+    Flujo completo por fila:
+    1. Ingresa el ID del paciente y presiona CONSULTAR.
+    2. Detecta el popup "No se encontró el afiliado" (timeout 3000 ms) y lo
+       cierra retornando ``ESTADO_PAC_NO_EXISTE`` si aparece.
+    3. Cierra el alert de PAC PLAN ALFA si está presente.
+    4. Valida que los primeros 5 caracteres del nombre web coincidan con el Excel.
+    5. Navega a CONSULTAR DIRECCIONAMIENTO y filtra por número de autorización.
+    6. Si no hay resultados, aplica el "truco de fechas": regresa 6 meses y
+       vuelve a consultar (maneja autorizaciones antiguas que cambian de año).
+    7. Extrae los códigos del grid con paginación y busca ``cod_fact``.
+    8. Si encuentra coincidencia, extrae los 5 campos adicionales.
+
+    Args:
+        page: Instancia de ``playwright.sync_api.Page`` posicionada en el
+              módulo de REGISTRAR DIRECCIONAMIENTO.
+        fila: Dict con las claves ``id_paciente``, ``nombre_paciente``,
+              ``autorizacion`` y ``cod_fact`` leídas del Excel.
+        config: Configuración del robot.
+        logger: Logger centralizado.
+        idx: Número de fila actual (para mensajes de log).
+        total: Total de filas pendientes (para mensajes de log).
+
+    Returns:
+        Dict con la clave ``"estado"`` (uno de los valores ``ESTADO_*``) y
+        las claves ``paquete``, ``cantidad``, ``sede``, ``nombre_convenio``,
+        ``fecha_vencimiento``. Si no se encuentra el registro, estos últimos
+        5 campos retornan vacíos.
     """
     id_pac  = str(fila["id_paciente"]).strip()
     nombre  = str(fila["nombre_paciente"]).strip().upper()
@@ -341,6 +455,35 @@ def _procesar_fila(page, fila: dict, config: dict, logger, idx: int, total: int)
 
 
 def ejecutar(config: dict, logger, datos_entrada: Any = None) -> Tuple[bool, Any]:
+    """Verifica en la web de SaludTotal todas las filas pendientes del consolidado.
+
+    Abre una sesión de Playwright Chromium, hace login, navega al módulo de
+    Direccionamiento y procesa secuencialmente cada fila con ``ESTADO_ROBOT``
+    vacío. Escribe el resultado en el Excel en tiempo real (fila a fila) para
+    no perder progreso ante interrupciones. Reutiliza la sesión web mientras el
+    paciente no cambie; si cambia, navega de vuelta al formulario sin cerrar
+    el browser. Ante fallo por intento aplica hasta ``reintentos_max`` intentos
+    reiniciando la sesión web completa.
+
+    Args:
+        config: Configuración del robot. Se usan las claves
+                ``config["archivos"]["consolidado"]``,
+                ``config["parametros"]["reintentos_max"]``,
+                ``config["parametros"]["guardar_cada_n_registros"]``,
+                ``config["tiempos"]["timeout_general"]`` y todas las de
+                ``config["navegacion"]``.
+        logger: Logger centralizado.
+        datos_entrada: No utilizado. Existe por convención de arquitectura.
+
+    Returns:
+        Tupla ``(True, resumen)`` donde ``resumen`` es::
+
+            {"verificados": int, "pendientes": int}
+
+        Retorna ``(True, {"verificados": 0, "pendientes": 0})`` si
+        ``consolidado.xlsx`` no existe o no tiene filas pendientes.
+        Retorna ``(False, None)`` ante error crítico de Playwright.
+    """
     nombre_proceso = "p05_navegacion_web"
     logger.info(">> INICIO subproceso: %s", nombre_proceso)
 

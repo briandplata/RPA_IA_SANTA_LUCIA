@@ -1,8 +1,12 @@
 """
-Subproceso: p03_excel
-Descripción: Verifica duplicados por número de autorización y escribe los resultados
-             en consolidado.xlsx (exitosos) y errores.xlsx (fallidos o duplicados).
-             Columna A: fecha/hora | Columna G: ESTADO_ROBOT (vacío = pendiente de verificar).
+Módulo: processes.p03_excel
+Descripción: Tercer subproceso del pipeline. Verifica duplicados por número de
+             autorización y escribe los resultados en dos archivos Excel:
+             - ``pacientes/procesados/consolidado.xlsx`` (exitosos únicos, 12 columnas)
+             - ``pacientes/no_procesados/errores.xlsx`` (OCR fallido o duplicados)
+             Columna A: fecha/hora de lectura. Columna G: ESTADO_ROBOT vacío = pendiente.
+             Las columnas H-L las completa p05 en tiempo real tras la verificación web.
+Autor: Brayand Javier Gomez Plata
 """
 
 import os
@@ -30,7 +34,19 @@ COL_ESTADO_ROBOT = 6   # Columna G
 
 
 def _cargar_o_crear_excel(ruta: str, cabeceras: list[str]) -> openpyxl.Workbook:
-    """Carga el Excel si existe, o crea uno nuevo con cabeceras y estilo."""
+    """Carga el Excel existente o crea uno nuevo con cabeceras estilizadas.
+
+    Si el archivo no existe lo crea con la fila de cabecera formateada:
+    fondo azul oscuro (#1F4E79), texto blanco en negrita y alineación centrada.
+    El directorio padre se crea automáticamente si no existe.
+
+    Args:
+        ruta: Ruta al archivo ``.xlsx``.
+        cabeceras: Lista de nombres de columna en el orden correcto.
+
+    Returns:
+        ``openpyxl.Workbook`` listo para agregar filas.
+    """
     if os.path.exists(ruta):
         return openpyxl.load_workbook(ruta)
 
@@ -54,7 +70,18 @@ def _cargar_o_crear_excel(ruta: str, cabeceras: list[str]) -> openpyxl.Workbook:
 
 
 def _obtener_autorizaciones_existentes(ruta: str) -> set[str]:
-    """Retorna el conjunto de autorizaciones ya registradas en consolidado.xlsx."""
+    """Lee consolidado.xlsx y retorna el conjunto de números AUT ya registrados.
+
+    Permite detectar duplicados antes de insertar nuevas filas. Lee solo la
+    columna E (índice 4, ``COL_AUTORIZACION``) para minimizar memoria.
+
+    Args:
+        ruta: Ruta al archivo ``consolidado.xlsx``.
+
+    Returns:
+        ``set`` de strings con cada número de autorización registrado,
+        o ``set`` vacío si el archivo no existe todavía.
+    """
     if not os.path.exists(ruta):
         return set()
 
@@ -70,6 +97,35 @@ def _obtener_autorizaciones_existentes(ruta: str) -> set[str]:
 
 
 def ejecutar(config: dict, logger, datos_entrada: Any = None) -> Tuple[bool, Any]:
+    """Escribe los resultados del OCR en los archivos Excel de consolidado y errores.
+
+    Flujo:
+    1. Lee las autorizaciones ya existentes en ``consolidado.xlsx`` para
+       detectar duplicados sin releer el archivo completo en cada iteración.
+    2. Registra los errores de OCR en ``errores.xlsx``.
+    3. Para cada exitoso: si el AUT es duplicado lo envía a ``errores.xlsx``
+       y marca ``item["_duplicado"] = True``; si es nuevo lo agrega al
+       consolidado con ESTADO_ROBOT vacío (columna G) y ``_duplicado = False``.
+    4. Guarda ambos archivos al finalizar.
+
+    Args:
+        config: Configuración de ``config.yaml``. Se usan las claves
+                ``config["archivos"]["consolidado"]`` y
+                ``config["archivos"]["errores"]``.
+        logger: Logger centralizado.
+        datos_entrada: Dict ``{"exitosos": [...], "errores": [...]}``
+                       tal como lo retorna ``p02_ocr_ia.ejecutar()``.
+
+    Returns:
+        Tupla ``(True, datos_entrada)`` donde cada item en ``datos_entrada``
+        ha sido anotado con la clave ``"_duplicado": bool``.
+        Retorna ``(False, None)`` ante errores críticos.
+
+    Note:
+        ``datos_entrada`` se retorna modificado en lugar de una copia,
+        para que ``p04_mover_archivos`` pueda leer el flag ``_duplicado``
+        sin trabajo adicional.
+    """
     nombre_proceso = "p03_excel"
     logger.info(">> INICIO subproceso: %s", nombre_proceso)
 

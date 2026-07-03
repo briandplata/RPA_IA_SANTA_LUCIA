@@ -1,8 +1,11 @@
 """
-Subproceso: p02_ocr_ia
-Descripción: Convierte cada PDF a imagen y usa GPT-4o Vision para extraer
-             los 4 campos clave: id_paciente, autorizacion, cod_fact, nombre_paciente.
-             Valida formato y completitud antes de aceptar el resultado.
+Módulo: processes.p02_ocr_ia
+Descripción: Segundo subproceso del pipeline. Convierte cada PDF a imagen de alta
+             resolución y llama a GPT-4o Vision (OpenAI) para extraer los 4 campos
+             clave del formulario de autorización médica: id_paciente, autorizacion,
+             cod_fact y nombre_paciente. Valida formato y completitud antes de
+             aceptar cada resultado. Reintenta hasta 3 veces por archivo.
+Autor: Brayand Javier Gomez Plata
 """
 
 import os
@@ -40,7 +43,21 @@ PATRON_AUT = re.compile(r"^\d{5}-\d{10}$")
 
 
 def _pdf_a_imagen_base64(ruta_pdf: str, zoom: float = 3.0) -> list[str]:
-    """Convierte cada página del PDF a imagen PNG en base64 con alta resolución."""
+    """Convierte cada página del PDF a imagen PNG codificada en base64.
+
+    Usa PyMuPDF (fitz) con un factor de zoom 3x (216 dpi efectivos) para
+    garantizar suficiente resolución al procesar manuscritos o sellos de baja
+    calidad. No depende de Poppler ni de ningún binario externo.
+
+    Args:
+        ruta_pdf: Ruta al archivo PDF de entrada.
+        zoom: Factor de escala aplicado al renderizar cada página.
+              El valor por defecto 3.0 equivale a ~216 dpi.
+
+    Returns:
+        Lista de strings base64 (uno por página), listos para adjuntar
+        en el payload de OpenAI Vision como ``data:image/png;base64,...``.
+    """
     doc = fitz.open(ruta_pdf)
     imagenes_b64 = []
     matrix = fitz.Matrix(zoom, zoom)
@@ -56,7 +73,21 @@ def _pdf_a_imagen_base64(ruta_pdf: str, zoom: float = 3.0) -> list[str]:
 
 
 def _validar_campos(datos: dict) -> list[str]:
-    """Valida que todos los campos estén presentes y con formato correcto."""
+    """Valida presencia y formato de los campos extraídos por la IA.
+
+    Reglas aplicadas:
+    - Los 4 campos (``id_paciente``, ``autorizacion``, ``cod_fact``,
+      ``nombre_paciente``) no pueden ser nulos ni vacíos.
+    - ``autorizacion`` debe coincidir con ``PATRON_AUT`` (5 dígitos-10 dígitos).
+    - ``id_paciente`` y ``cod_fact`` deben ser completamente numéricos.
+
+    Args:
+        datos: Diccionario retornado por ``_llamar_gpt_vision``.
+
+    Returns:
+        Lista de strings describiendo cada error encontrado.
+        Lista vacía si todos los campos son válidos.
+    """
     errores = []
 
     campos_requeridos = ["id_paciente", "autorizacion", "cod_fact", "nombre_paciente"]
@@ -85,7 +116,26 @@ def _validar_campos(datos: dict) -> list[str]:
 
 
 def _llamar_gpt_vision(client: OpenAI, imagenes_b64: list[str], model: str) -> dict:
-    """Envía las imágenes a GPT-4o Vision y retorna el JSON extraído."""
+    """Envía las imágenes del PDF a GPT-4o Vision y retorna el JSON extraído.
+
+    Construye un mensaje multimodal con el prompt de instrucciones seguido de
+    cada página del PDF como imagen base64 (``detail: high``). Usa
+    ``temperature=0`` para reproducibilidad. Limpia markdown extra si el modelo
+    envuelve el JSON en bloques de código.
+
+    Args:
+        client: Instancia autenticada de ``openai.OpenAI``.
+        imagenes_b64: Lista de páginas en base64 (salida de ``_pdf_a_imagen_base64``).
+        model: Nombre del modelo OpenAI a invocar, p. ej. ``"gpt-4o"``.
+
+    Returns:
+        Diccionario con las claves ``id_paciente``, ``autorizacion``,
+        ``cod_fact`` y ``nombre_paciente`` (valores string o ``None``).
+
+    Raises:
+        json.JSONDecodeError: Si la respuesta no es JSON válido.
+        openai.OpenAIError: Ante fallos de red o límite de tasa.
+    """
     content = [{"type": "text", "text": PROMPT_OCR}]
 
     for b64 in imagenes_b64:
@@ -119,6 +169,47 @@ def _llamar_gpt_vision(client: OpenAI, imagenes_b64: list[str], model: str) -> d
 
 
 def ejecutar(config: dict, logger, datos_entrada: Any = None) -> Tuple[bool, Any]:
+    """Ejecuta el proceso OCR sobre la lista de PDFs recibida.
+
+    Para cada PDF: convierte a imagen, llama a GPT-4o Vision, valida los
+    campos y reintenta hasta ``config["ocr"]["max_reintentos"]`` veces.
+    Acumula resultados en dos listas separadas: exitosos y errores.
+
+    Args:
+        config: Configuración cargada de ``config.yaml``. Se usan las claves
+                ``config["ocr"]["model"]`` y ``config["ocr"]["max_reintentos"]``.
+        logger: Logger centralizado (``utils.logger.get_logger``).
+        datos_entrada: Lista de rutas absolutas de PDFs (salida de p01).
+
+    Returns:
+        Tupla ``(True, resultado)`` donde ``resultado`` es un dict::
+
+            {
+                "exitosos": [
+                    {
+                        "fecha_hora": str,     # "29/06/2026 11:11:03 am"
+                        "archivo": str,        # nombre del PDF
+                        "ruta": str,           # ruta absoluta del PDF
+                        "id_paciente": str,
+                        "nombre_paciente": str,
+                        "autorizacion": str,   # formato "84267-XXXXXXXXXX"
+                        "cod_fact": str
+                    }, ...
+                ],
+                "errores": [
+                    {
+                        "fecha_hora": str,
+                        "archivo": str,
+                        "ruta": str,
+                        "motivo": "NO_LEGIBLE",
+                        "detalle": str
+                    }, ...
+                ]
+            }
+
+        Retorna ``(False, None)`` si no se recibieron PDFs o la API key
+        no está configurada.
+    """
     nombre_proceso = "p02_ocr_ia"
     logger.info(">> INICIO subproceso: %s", nombre_proceso)
 
