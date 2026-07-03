@@ -127,7 +127,9 @@ Herramienta RPA de escritorio. No requiere servidor ni infraestructura cloud —
 
 ## Slides
 
-*(Por completar)*
+La presentación del proyecto se encuentra en:
+
+📁 [`Documentacion/LUC-IA-PRESENTACION MASTER.pptx`](Documentacion/LUC-IA-PRESENTACION%20MASTER.pptx)
 
 ## Video
 
