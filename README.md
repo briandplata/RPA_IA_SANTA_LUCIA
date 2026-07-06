@@ -133,4 +133,6 @@ La presentación del proyecto se encuentra en:
 
 ## Video
 
-*(Por completar)*
+Demo completa del robot en funcionamiento:
+
+▶️ [https://www.youtube.com/watch?v=cfsQEmF1t2w](https://www.youtube.com/watch?v=cfsQEmF1t2w)

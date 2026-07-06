@@ -342,7 +342,18 @@ def _procesar_fila(page, fila: dict, config: dict, logger, idx: int, total: int)
     logger.info("[Fila %d/%d] Consultando paciente ID=%s | AUT=%s", idx, total, id_pac, aut)
 
     # Ingresar cédula y consultar
-    page.get_by_role("textbox", name=SELECTORES["campo_id_paciente"]).fill(id_pac)
+    campo_cedula = page.get_by_role("textbox", name=SELECTORES["campo_id_paciente"])
+    campo_cedula.wait_for(state="visible")
+    campo_cedula.click()
+    campo_cedula.press("Control+a")
+    campo_cedula.press("Backspace")
+    campo_cedula.type(id_pac, delay=30)
+    # Verificar que el valor quedó escrito antes de consultar
+    if campo_cedula.input_value().strip() != id_pac:
+        logger.warning("[Fila %d/%d] Reintentando escritura de cédula ID=%s", idx, total, id_pac)
+        campo_cedula.click()
+        campo_cedula.press("Control+a")
+        campo_cedula.type(id_pac, delay=60)
     page.get_by_role("button", name=SELECTORES["btn_consultar"]).first.click()
 
     # Manejar popup "No se encontró el afiliado"
@@ -550,6 +561,19 @@ def ejecutar(config: dict, logger, datos_entrada: Any = None) -> Tuple[bool, Any
         for contador, fila in enumerate(filas_pendientes, start=1):
             resultado = {"estado": ESTADO_ERROR, **_datos_vacio()}
             id_pac = fila["id_paciente"]
+
+            # Validar que los 4 campos requeridos estén presentes
+            campos_vacios = [c for c in ("id_paciente", "nombre_paciente", "autorizacion", "cod_fact")
+                             if not fila.get(c)]
+            if campos_vacios:
+                logger.warning(
+                    "[Fila %d/%d] Campos vacíos en Excel (%s) — se marca 'Falta información' y se omite",
+                    contador, total, ", ".join(campos_vacios)
+                )
+                ws.cell(row=fila["row_idx"], column=COL_ESTADO_ROBOT, value="Falta información")
+                wb.save(ruta_consolidado)
+                verificados += 1
+                continue
 
             for intento in range(1, reintentos_max + 1):
                 try:

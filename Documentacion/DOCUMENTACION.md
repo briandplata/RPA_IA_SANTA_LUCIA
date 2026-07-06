@@ -3,7 +3,9 @@
 **Versión:** 1.0.0  
 **Autor:** Brayand Javier Gomez Plata  
 **Fecha:** 2026-06-29  
-**Proyecto:** Trabajo de Fin de Máster — Máster en Desarrollo de Inteligencia Artificial
+**Proyecto:** Trabajo de Fin de Máster — Máster en Desarrollo de Inteligencia Artificial  
+**Repositorio:** https://github.com/briandplata/RPA_IA_SANTA_LUCIA  
+**Video demo:** https://www.youtube.com/watch?v=cfsQEmF1t2w
 
 ---
 
